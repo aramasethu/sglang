@@ -206,7 +206,9 @@ class SchedulerMetricsMixin:
             2.0 * hidden_size * head_dim * (num_attn_heads + 2.0 * num_kv_heads)
             + 2.0 * hidden_size * head_dim * num_attn_heads
         )
-        mlp_flops = 6.0 * hidden_size * intermediate_size if intermediate_size > 0 else 0.0
+        mlp_flops = (
+            6.0 * hidden_size * intermediate_size if intermediate_size > 0 else 0.0
+        )
         self._linear_flops_per_token = max(
             0.0, (attn_linear_flops + mlp_flops) * num_layers
         )
@@ -238,10 +240,7 @@ class SchedulerMetricsMixin:
         # Activation movement bytes per token (coarse approximation).
         self._qkv_act_bytes_per_token = (
             hidden_size * act_bytes * num_layers
-            + (num_attn_heads + 2.0 * num_kv_heads)
-            * head_dim
-            * act_bytes
-            * num_layers
+            + (num_attn_heads + 2.0 * num_kv_heads) * head_dim * act_bytes * num_layers
             + head_dim * num_attn_heads * act_bytes * num_layers
             + hidden_size * act_bytes * num_layers
         )
@@ -253,10 +252,7 @@ class SchedulerMetricsMixin:
 
         # Prefill reads Q/K/V activations from on-device memory.
         self._prefill_attn_act_read_per_token = (
-            (num_attn_heads + 2.0 * num_kv_heads)
-            * head_dim
-            * act_bytes
-            * num_layers
+            (num_attn_heads + 2.0 * num_kv_heads) * head_dim * act_bytes * num_layers
         )
 
         # Decode reads Q from activation memory; K/V reads are from KV cache.
@@ -264,7 +260,9 @@ class SchedulerMetricsMixin:
             num_attn_heads * head_dim * act_bytes * num_layers
         )
 
-    def _estimate_prefill_perf(self: Scheduler, num_tokens: int) -> Tuple[float, float, float]:
+    def _estimate_prefill_perf(
+        self: Scheduler, num_tokens: int
+    ) -> Tuple[float, float, float]:
         tokens = max(0, int(num_tokens))
         if tokens == 0:
             return 0.0, 0.0, 0.0
