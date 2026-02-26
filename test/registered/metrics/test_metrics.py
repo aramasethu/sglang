@@ -224,7 +224,9 @@ class TestEnableMetrics(CustomTestCase):
                     for sample in metrics.get(metric_name, [])
                     if sample.labels.get("model_name") == _MODEL_NAME
                 ]
-                self.assertTrue(values, f"{metric_name}: no samples for model {_MODEL_NAME}")
+                self.assertTrue(
+                    values, f"{metric_name}: no samples for model {_MODEL_NAME}"
+                )
                 self.assertGreater(
                     sum(values),
                     0,
