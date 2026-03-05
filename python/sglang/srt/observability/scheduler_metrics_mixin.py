@@ -151,6 +151,9 @@ class SchedulerMetricsMixin:
             self.enable_mfu_metrics = bool(self.server_args.enable_mfu_metrics)
             if self.enable_mfu_metrics:
                 self._init_estimated_perf_constants()
+                self._mfu_log_flops = 0.0
+                self._mfu_log_read_bytes = 0.0
+                self._mfu_log_write_bytes = 0.0
 
             if ENABLE_METRICS_DEVICE_TIMER:
                 self.forward_pass_device_timer = DeviceTimer(
@@ -413,6 +416,11 @@ class SchedulerMetricsMixin:
 
         msg += f"{graph_backend[self.device]}: {can_run_cuda_graph}"
 
+        if self.enable_mfu_metrics and gap_latency > 0:
+            flops, _, _ = self._estimate_prefill_perf(prefill_stats.log_input_tokens)
+            tflops_per_s = flops / gap_latency / 1e12
+            msg += f", est. prefill TFLOPS/s (per GPU): {tflops_per_s:.2f}"
+
         if self.is_stats_logging_rank:
             logger.info(msg)
 
@@ -637,6 +645,22 @@ class SchedulerMetricsMixin:
             f"#queue-req: {len(self.waiting_queue)}"
         )
 
+        if self.enable_mfu_metrics and gap_latency > 0:
+            flops_per_s = self._mfu_log_flops / gap_latency
+            read_bytes_per_s = self._mfu_log_read_bytes / gap_latency
+            write_bytes_per_s = self._mfu_log_write_bytes / gap_latency
+            tflops_per_s = flops_per_s / 1e12
+            read_gb_per_s = read_bytes_per_s / 1e9
+            write_gb_per_s = write_bytes_per_s / 1e9
+            msg += (
+                f", est. decode TFLOPS/s (per GPU): {tflops_per_s:.2f}, "
+                f"est. read BW (GB/s per GPU): {read_gb_per_s:.2f}, "
+                f"est. write BW (GB/s per GPU): {write_gb_per_s:.2f}"
+            )
+            self._mfu_log_flops = 0.0
+            self._mfu_log_read_bytes = 0.0
+            self._mfu_log_write_bytes = 0.0
+
         if self.is_stats_logging_rank:
             logger.info(msg)
         if self.current_scheduler_metrics_enabled:
@@ -726,6 +750,9 @@ class SchedulerMetricsMixin:
                     num_read_bytes_per_gpu=read_bytes,
                     num_write_bytes_per_gpu=write_bytes,
                 )
+                self._mfu_log_flops += flops
+                self._mfu_log_read_bytes += read_bytes
+                self._mfu_log_write_bytes += write_bytes
 
         if x := self.scheduler_status_logger:
             x.maybe_dump(batch, self.waiting_queue)
