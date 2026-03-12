@@ -114,6 +114,7 @@ class SchedulerMetricsMixin:
         self.stats = SchedulerStats()
 
         # Metrics
+        self.enable_mfu_metrics = False
         self.enable_metrics = self.server_args.enable_metrics
         self.is_stats_logging_rank = self.attn_tp_rank == 0
         self.current_scheduler_metrics_enabled = self.enable_metrics and (
