@@ -510,11 +510,24 @@ class SchedulerMetricsMixin:
 
         # Every-iteration work: realtime token counting + status logger
         if self.current_scheduler_metrics_enabled:
+            decode_tokens = batch.batch_size() + num_accepted_tokens
             self.metrics_collector.increment_realtime_tokens(
                 # TODO unify this w/ the bumping logic in `Scheduler.num_generated_tokens` accumulator
-                decode_tokens=batch.batch_size() + num_accepted_tokens,
+                decode_tokens=decode_tokens,
                 dp_cooperation_info=batch.dp_cooperation_info,
             )
+            if self.enable_mfu_metrics:
+                flops, read_bytes, write_bytes = self._estimate_decode_perf(
+                    batch, decode_tokens
+                )
+                self.metrics_collector.increment_estimated_perf(
+                    num_flops_per_gpu=flops,
+                    num_read_bytes_per_gpu=read_bytes,
+                    num_write_bytes_per_gpu=write_bytes,
+                )
+                self._mfu_log_flops += flops
+                self._mfu_log_read_bytes += read_bytes
+                self._mfu_log_write_bytes += write_bytes
 
             if x := self.scheduler_status_logger:
                 x.maybe_dump(batch, self.waiting_queue)
@@ -731,32 +744,6 @@ class SchedulerMetricsMixin:
             self.metrics_collector.log_stats(self.stats)
             self._emit_kv_metrics()
         self._publish_kv_events()
-
-    def log_decode_stats_every_iteration(
-        self: Scheduler, batch: ScheduleBatch, num_accepted_tokens: int
-    ):
-        if self.enable_metrics:
-            decode_tokens = batch.batch_size() + num_accepted_tokens
-            self.metrics_collector.increment_realtime_tokens(
-                # TODO unify this w/ the bumping logic in `Scheduler.num_generated_tokens` accumulator
-                decode_tokens=decode_tokens,
-                dp_cooperation_info=batch.dp_cooperation_info,
-            )
-            if self.enable_mfu_metrics:
-                flops, read_bytes, write_bytes = self._estimate_decode_perf(
-                    batch, decode_tokens
-                )
-                self.metrics_collector.increment_estimated_perf(
-                    num_flops_per_gpu=flops,
-                    num_read_bytes_per_gpu=read_bytes,
-                    num_write_bytes_per_gpu=write_bytes,
-                )
-                self._mfu_log_flops += flops
-                self._mfu_log_read_bytes += read_bytes
-                self._mfu_log_write_bytes += write_bytes
-
-        if x := self.scheduler_status_logger:
-            x.maybe_dump(batch, self.waiting_queue)
 
     def log_batch_result_stats(
         self: Scheduler,
